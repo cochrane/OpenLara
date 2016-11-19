@@ -4,10 +4,6 @@
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 
-bool isQuit = false;
-WindowRef window;
-AGLContext context;
-
 #define SND_SIZE 8192
 
 static AudioQueueRef audioQueue;
@@ -268,7 +264,7 @@ int main() {
         NSOpenGLPFAColorSize, 32,
         NSOpenGLPFADepthSize, 24,
         NSOpenGLPFAStencilSize, 8,
-        NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersionLegacy,
+        NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,
         0
     };
     NSOpenGLPixelFormat *format = [[NSOpenGLPixelFormat alloc] initWithAttributes:attribs];
