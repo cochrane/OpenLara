@@ -3,6 +3,7 @@
 #include <Cocoa/Cocoa.h>
 #include <mach/mach.h>
 #include <mach/mach_time.h>
+#include <IOKit/hid/IOHidLib.h>
 
 bool isQuit = false;
 WindowRef window;
@@ -65,6 +66,116 @@ InputKey mouseToInputKey(int btn) {
         case 3 : return ikMouseM;
     }
     return ikNone;
+}
+
+/*
+ * Returns the value as a double from 0 (min) to 1 (max) based on element min
+ * and max values. You'd think IOHIDValueGetScaledValue would do that. You'd
+ * be wrong.
+ */
+double logicalScaledValue(IOHIDValueRef value) {
+    IOHIDElementRef element = IOHIDValueGetElement(value);
+    CFIndex min = IOHIDElementGetLogicalMin(element);
+    CFIndex max = IOHIDElementGetLogicalMax(element);
+    return (double) (IOHIDValueGetIntegerValue(value) - min) / (max - min);
+}
+
+/*
+ * Returns the value as a double from -1 (min) to 1 (max) based on element min
+ * and max values. Also adds a dead zone of 10%.
+ */
+double adjustedValue(IOHIDValueRef value) {
+    const double deadzone = 0.1;
+    
+    double centeredValue = logicalScaledValue(value) * 2.0 - 1.0;
+    double offsetFromCenter = fabs(centeredValue);
+    double adjustedOffset = fmax((offsetFromCenter - deadzone) / (1.0 - deadzone), 0.0);
+    return copysign(adjustedOffset, centeredValue);
+}
+
+/*
+ * Processes a value from hidValueCallback that belongs to the GenericDesktop
+ * usage page, representing mostly joystick axis, hatswitch and so on.
+ */
+void processHIDGenericDesktopInput(IOHIDValueRef value) {
+    switch (IOHIDElementGetUsage(IOHIDValueGetElement(value))) {
+        case kHIDUsage_GD_X:
+            Input::setPos(ikJoyR, vec2(adjustedValue(value), Input::joy.R.y));
+            break;
+        case kHIDUsage_GD_Y:
+            Input::setPos(ikJoyR, vec2(Input::joy.R.x, adjustedValue(value)));
+            break;
+        case kHIDUsage_GD_Z:
+            Input::setPos(ikJoyL, vec2(Input::joy.L.x, adjustedValue(value)));
+            break;
+        case kHIDUsage_GD_Rz:
+            Input::setPos(ikJoyL, vec2(adjustedValue(value), Input::joy.L.y));
+            break;
+        default:
+            NSLog(@"Got int value %ld (scaled %f) for element usage %u", IOHIDValueGetIntegerValue(value), IOHIDValueGetScaledValue(value, kIOHIDValueScaleTypeCalibrated), IOHIDElementGetUsage(IOHIDValueGetElement(value)));
+            break;
+    }
+}
+
+/*
+ * Maps a joystick button to a key on the gamepad model used internally. Mapping
+ * is guessed and probably not optimal.
+ */
+InputKey joyButtonToKey(uint32_t button) {
+    switch(button) {
+        case 0: return ikJoyA;
+        case 1: return ikJoyB;
+        case 2: return ikJoyX;
+        case 3: return ikJoyY;
+        case 4: return ikJoyLB;
+        case 5: return ikJoyRB;
+        case 6: return ikJoySelect;
+        case 7: return ikJoyStart;
+        default: return ikNone;
+    }
+}
+
+void processHIDButtonInput(IOHIDValueRef value) {
+    uint32_t button = IOHIDElementGetUsage(IOHIDValueGetElement(value)) - kHIDUsage_Button_1;
+    bool down = IOHIDValueGetIntegerValue(value) != 0;
+    Input::setDown(joyButtonToKey(button), down);
+}
+
+void hidValueCallback (void *context, IOReturn result, void *sender, IOHIDValueRef value) {
+    if (result != kIOReturnSuccess)
+        return;
+    
+    IOHIDElementRef element = IOHIDValueGetElement(value);
+    switch (IOHIDElementGetUsagePage(element)) {
+        case kHIDPage_GenericDesktop:
+            processHIDGenericDesktopInput(value);
+            break;
+        case kHIDPage_Button:
+            processHIDButtonInput(value);
+            break;
+        default:
+            NSLog(@"Got int value %ld (scaled %f) for page %u usage %u", IOHIDValueGetIntegerValue(value), IOHIDValueGetScaledValue(value, kIOHIDValueScaleTypeCalibrated), IOHIDElementGetUsagePage(element), IOHIDElementGetUsage(element));
+    }
+}
+
+
+void setupJoystickInput() {
+    IOHIDManagerRef hidManager = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDManagerOptionNone);
+    
+    NSDictionary *matchingGamepad = @{
+        @(kIOHIDDeviceUsagePageKey): @(kHIDPage_GenericDesktop),
+        @(kIOHIDDeviceUsageKey): @(kHIDUsage_GD_GamePad)
+    };
+    NSDictionary *matchingJoystick = @{
+        @(kIOHIDDeviceUsagePageKey): @(kHIDPage_GenericDesktop),
+        @(kIOHIDDeviceUsageKey): @(kHIDUsage_GD_Joystick)
+    };
+    NSArray *matchDicts = @[ matchingGamepad, matchingJoystick ];
+    
+    IOHIDManagerSetDeviceMatchingMultiple(hidManager, (__bridge CFArrayRef) matchDicts);
+    IOHIDManagerScheduleWithRunLoop(hidManager, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
+    IOHIDManagerOpen(hidManager, kIOHIDOptionsTypeNone);
+    IOHIDManagerRegisterInputValueCallback(hidManager, hidValueCallback, nullptr);
 }
 
 int lastTime;
@@ -324,6 +435,7 @@ int main() {
     strcat(contentPath, "/");
 
     soundInit();
+    setupJoystickInput();
     Game::init();
     
     // show window
