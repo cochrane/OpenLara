@@ -191,8 +191,11 @@ int getTime() {
 @implementation OpenLaraDelegate
 
 - (BOOL)application:(NSApplication *)sender openFile:(NSString *)filename {
+    CVDisplayLinkStop(displayLink);
     Game::free();
-    Game::init(filename.fileSystemRepresentation);
+    Game::init(filename.fileSystemRepresentation, false);
+    [[NSDocumentController sharedDocumentController] noteNewRecentDocumentURL:[NSURL fileURLWithPath:filename isDirectory:NO]];
+    CVDisplayLinkStart(displayLink);
     return YES;
 }
 
@@ -228,6 +231,7 @@ int getTime() {
         CVDisplayLinkStop(displayLink);
         Game::free();
         Game::init(panel.URL.fileSystemRepresentation, false);
+        [[NSDocumentController sharedDocumentController] noteNewRecentDocumentURL:panel.URL];
         CVDisplayLinkStart(displayLink);
     }];
 }
@@ -284,6 +288,8 @@ int main() {
     OpenLaraDelegate *delegate = [[OpenLaraDelegate alloc] init];
     application.delegate = delegate;
     
+    [NSDocumentController sharedDocumentController];
+    
     // init window
     NSRect rect = NSMakeRect(0, 0, 1280, 720);
     NSWindow *mainWindow = [[NSWindow alloc] initWithContentRect:rect styleMask:NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask backing:NSBackingStoreBuffered defer:YES];
@@ -309,9 +315,9 @@ int main() {
     
     // Init main menu
     NSMenu *mainMenu = [[NSMenu alloc] initWithTitle:@""];
-    NSMenuItem *appMenu = [[NSMenuItem alloc] initWithTitle:@"OpenLara" action:nil keyEquivalent:@""];
+    NSMenuItem *appMenu = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
     [mainMenu addItem:appMenu];
-    appMenu.submenu = [[NSMenu alloc] initWithTitle:@"OpenLara"];
+    appMenu.submenu = [[NSMenu alloc] initWithTitle:@""];
     
     // - app menu (no preferences)
     [appMenu.submenu addItemWithTitle:@"About OpenLara" action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
@@ -319,7 +325,7 @@ int main() {
     [appMenu.submenu addItem:[NSMenuItem separatorItem]];
     
     NSMenuItem *servicesItem = [[NSMenuItem alloc] initWithTitle:@"Services" action:nil keyEquivalent:@""];
-    servicesItem.submenu = [[NSMenu alloc] initWithTitle:@"Services"];
+    servicesItem.submenu = [[NSMenu alloc] initWithTitle:@""];
     [appMenu.submenu addItem:servicesItem];
     
     [appMenu.submenu addItem:[NSMenuItem separatorItem]];
@@ -337,9 +343,12 @@ int main() {
     NSMenuItem *fileMenu = [mainMenu addItemWithTitle:@"" action:nil keyEquivalent:@""];
     fileMenu.submenu = [[NSMenu alloc] initWithTitle:@"File"];
     [fileMenu.submenu addItemWithTitle:@"Open…" action:@selector(loadLevel:) keyEquivalent:@"o"];
+    NSMenuItem *openRecentMenuItem = [fileMenu.submenu addItemWithTitle:@"Open Recent" action:nil keyEquivalent:@""];
+    openRecentMenuItem.submenu = [[NSMenu alloc] initWithTitle:@"Open Recent"];
+    [openRecentMenuItem.submenu setValue:@"NSRecentDocumentsMenu" forKey:@"menuName"];
     
     // - window menu
-    NSMenuItem *windowMenu= [[NSMenuItem alloc] initWithTitle:@"Window" action:nil keyEquivalent:@""];
+    NSMenuItem *windowMenu= [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
     [mainMenu addItem:windowMenu];
     windowMenu.submenu = [[NSMenu alloc] initWithTitle:@"Window"];
     
