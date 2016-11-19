@@ -574,11 +574,15 @@ struct Stream {
 
     Stream(const char *name) : data(NULL), size(-1), pos(0) {
     #ifdef __APPLE__
-        extern char *contentPath;
-        int len = strlen(contentPath);
-        strcat(contentPath, name);
-        f = fopen(contentPath, "rb");
-        contentPath[len] = '\0';
+        if (name[0] != '/') {
+            extern char *contentPath;
+            int len = strlen(contentPath);
+            strcat(contentPath, name);
+            f = fopen(contentPath, "rb");
+            contentPath[len] = '\0';
+        } else {
+            f = fopen(name, "rb");
+        }
     #else
         f = fopen(name, "rb");
     #endif

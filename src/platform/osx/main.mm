@@ -180,10 +180,20 @@ int getTime() {
 /*
  * Delegate to deal with things that happen at the window level
  */
-@interface OpenLaraWindowDelegate : NSObject<NSWindowDelegate>
+@interface OpenLaraDelegate : NSObject<NSWindowDelegate, NSApplicationDelegate>
+- (void)loadLevel:(id)sender;
 @end
 
-@implementation OpenLaraWindowDelegate
+@implementation OpenLaraDelegate
+
+- (BOOL)application:(NSApplication *)sender openFile:(NSString *)filename {
+    CVDisplayLinkStop(displayLink);
+    Game::free();
+    Game::init(filename.fileSystemRepresentation, false);
+    [[NSDocumentController sharedDocumentController] noteNewRecentDocumentURL:[NSURL fileURLWithPath:filename isDirectory:NO]];
+    CVDisplayLinkStart(displayLink);
+    return YES;
+}
 
 - (void)windowWillClose:(NSNotification *)notification {
     [[NSApplication sharedApplication] terminate:self];
@@ -199,6 +209,27 @@ int getTime() {
     // End paused game.
     lastTime = getTime();
     CVDisplayLinkStart(displayLink);
+}
+
+- (void)loadLevel:(id)sender {
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    panel.allowsMultipleSelection = NO;
+    panel.allowsOtherFileTypes = YES;
+    panel.canChooseDirectories = NO;
+    panel.canChooseFiles = YES;
+    panel.resolvesAliases = YES;
+    panel.allowedFileTypes = @[ @"phd" ];
+    
+    [panel beginSheetModalForWindow:[[NSApplication sharedApplication] mainWindow] completionHandler:^(NSInteger result) {
+        if (result != NSFileHandlingPanelOKButton)
+            return;
+        
+        CVDisplayLinkStop(displayLink);
+        Game::free();
+        Game::init(panel.URL.fileSystemRepresentation, false);
+        [[NSDocumentController sharedDocumentController] noteNewRecentDocumentURL:panel.URL];
+        CVDisplayLinkStart(displayLink);
+    }];
 }
 
 @end
@@ -250,13 +281,17 @@ CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeStamp *no
 
 int main() {
     NSApplication *application = [NSApplication sharedApplication];
+    OpenLaraDelegate *delegate = [[OpenLaraDelegate alloc] init];
+    application.delegate = delegate;
+    
+    [NSDocumentController sharedDocumentController];
     
     // init window
     NSRect rect = NSMakeRect(0, 0, 1280, 720);
     NSWindow *mainWindow = [[NSWindow alloc] initWithContentRect:rect styleMask:NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask backing:NSBackingStoreBuffered defer:YES];
     mainWindow.title = @"OpenLara";
     mainWindow.acceptsMouseMovedEvents = YES;
-    mainWindow.delegate = [[OpenLaraWindowDelegate alloc] init];
+    mainWindow.delegate = delegate;
     
     // init OpenGL context
     NSOpenGLPixelFormatAttribute attribs[] = {
@@ -276,9 +311,9 @@ int main() {
     
     // Init main menu
     NSMenu *mainMenu = [[NSMenu alloc] initWithTitle:@""];
-    NSMenuItem *appMenu = [[NSMenuItem alloc] initWithTitle:@"OpenLara" action:nil keyEquivalent:@""];
+    NSMenuItem *appMenu = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
     [mainMenu addItem:appMenu];
-    appMenu.submenu = [[NSMenu alloc] initWithTitle:@"OpenLara"];
+    appMenu.submenu = [[NSMenu alloc] initWithTitle:@""];
     
     // - app menu (no preferences)
     [appMenu.submenu addItemWithTitle:@"About OpenLara" action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
@@ -286,7 +321,7 @@ int main() {
     [appMenu.submenu addItem:[NSMenuItem separatorItem]];
     
     NSMenuItem *servicesItem = [[NSMenuItem alloc] initWithTitle:@"Services" action:nil keyEquivalent:@""];
-    servicesItem.submenu = [[NSMenu alloc] initWithTitle:@"Services"];
+    servicesItem.submenu = [[NSMenu alloc] initWithTitle:@""];
     [appMenu.submenu addItem:servicesItem];
     
     [appMenu.submenu addItem:[NSMenuItem separatorItem]];
@@ -300,8 +335,16 @@ int main() {
     
     [appMenu.submenu addItemWithTitle:@"Quit OpenLara" action:@selector(terminate:) keyEquivalent:@"q"];
     
+    // - file menu
+    NSMenuItem *fileMenu = [mainMenu addItemWithTitle:@"" action:nil keyEquivalent:@""];
+    fileMenu.submenu = [[NSMenu alloc] initWithTitle:@"File"];
+    [fileMenu.submenu addItemWithTitle:@"Open…" action:@selector(loadLevel:) keyEquivalent:@"o"];
+    NSMenuItem *openRecentMenuItem = [fileMenu.submenu addItemWithTitle:@"Open Recent" action:nil keyEquivalent:@""];
+    openRecentMenuItem.submenu = [[NSMenu alloc] initWithTitle:@"Open Recent"];
+    [openRecentMenuItem.submenu setValue:@"NSRecentDocumentsMenu" forKey:@"menuName"];
+    
     // - window menu
-    NSMenuItem *windowMenu= [[NSMenuItem alloc] initWithTitle:@"Window" action:nil keyEquivalent:@""];
+    NSMenuItem *windowMenu= [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
     [mainMenu addItem:windowMenu];
     windowMenu.submenu = [[NSMenu alloc] initWithTitle:@"Window"];
     

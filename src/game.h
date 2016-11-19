@@ -10,10 +10,10 @@
 namespace Game {
     Level *level;
 
-    void init() {
+    void init(const char *levelPath = "LEVEL2_DEMO.PHD", bool demo = true) {
         Core::init();
-        Stream stream("LEVEL2_DEMO.PHD");
-        level = new Level(stream, true);
+        Stream stream(levelPath);
+        level = new Level(stream, demo);
 
         #ifndef __EMSCRIPTEN__    
             //Sound::play(Sound::openWAD("05_Lara's_Themes.wav"), 1, 1, 0);
