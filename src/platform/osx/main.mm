@@ -184,10 +184,17 @@ int getTime() {
 /*
  * Delegate to deal with things that happen at the window level
  */
-@interface OpenLaraWindowDelegate : NSObject<NSWindowDelegate>
+@interface OpenLaraDelegate : NSObject<NSWindowDelegate, NSApplicationDelegate>
+- (void)loadLevel:(id)sender;
 @end
 
-@implementation OpenLaraWindowDelegate
+@implementation OpenLaraDelegate
+
+- (BOOL)application:(NSApplication *)sender openFile:(NSString *)filename {
+    Game::free();
+    Game::init(filename.fileSystemRepresentation);
+    return YES;
+}
 
 - (void)windowWillClose:(NSNotification *)notification {
     [[NSApplication sharedApplication] terminate:self];
@@ -203,6 +210,26 @@ int getTime() {
     // End paused game.
     lastTime = getTime();
     CVDisplayLinkStart(displayLink);
+}
+
+- (void)loadLevel:(id)sender {
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    panel.allowsMultipleSelection = NO;
+    panel.allowsOtherFileTypes = YES;
+    panel.canChooseDirectories = NO;
+    panel.canChooseFiles = YES;
+    panel.resolvesAliases = YES;
+    panel.allowedFileTypes = @[ @"phd" ];
+    
+    [panel beginSheetModalForWindow:[[NSApplication sharedApplication] mainWindow] completionHandler:^(NSInteger result) {
+        if (result != NSFileHandlingPanelOKButton)
+            return;
+        
+        CVDisplayLinkStop(displayLink);
+        Game::free();
+        Game::init(panel.URL.fileSystemRepresentation, false);
+        CVDisplayLinkStart(displayLink);
+    }];
 }
 
 @end
@@ -254,13 +281,15 @@ CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeStamp *no
 
 int main() {
     NSApplication *application = [NSApplication sharedApplication];
+    OpenLaraDelegate *delegate = [[OpenLaraDelegate alloc] init];
+    application.delegate = delegate;
     
     // init window
     NSRect rect = NSMakeRect(0, 0, 1280, 720);
     NSWindow *mainWindow = [[NSWindow alloc] initWithContentRect:rect styleMask:NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask backing:NSBackingStoreBuffered defer:YES];
     mainWindow.title = @"OpenLara";
     mainWindow.acceptsMouseMovedEvents = YES;
-    mainWindow.delegate = [[OpenLaraWindowDelegate alloc] init];
+    mainWindow.delegate = delegate;
     
     // init OpenGL context
     NSOpenGLPixelFormatAttribute attribs[] = {
@@ -303,6 +332,11 @@ int main() {
     [appMenu.submenu addItem:[NSMenuItem separatorItem]];
     
     [appMenu.submenu addItemWithTitle:@"Quit OpenLara" action:@selector(terminate:) keyEquivalent:@"q"];
+    
+    // - file menu
+    NSMenuItem *fileMenu = [mainMenu addItemWithTitle:@"" action:nil keyEquivalent:@""];
+    fileMenu.submenu = [[NSMenu alloc] initWithTitle:@"File"];
+    [fileMenu.submenu addItemWithTitle:@"Open…" action:@selector(loadLevel:) keyEquivalent:@"o"];
     
     // - window menu
     NSMenuItem *windowMenu= [[NSMenuItem alloc] initWithTitle:@"Window" action:nil keyEquivalent:@""];
