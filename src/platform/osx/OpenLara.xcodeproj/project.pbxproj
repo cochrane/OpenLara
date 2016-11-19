@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		523F97E41DDF7AA5006FE2FC /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 523F97E31DDF7AA5006FE2FC /* Cocoa.framework */; };
 		523F97E61DDF926E006FE2FC /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 523F97E51DDF926E006FE2FC /* QuartzCore.framework */; };
+		52E1EF1C1DE0A24F008428D4 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 52E1EF1B1DE0A24F008428D4 /* IOKit.framework */; };
 		99BFB6A21DCA7F5300E2E997 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 99BFB6A11DCA7F5300E2E997 /* main.mm */; };
 		99BFB6A51DCA872D00E2E997 /* LEVEL2_DEMO.PHD in Resources */ = {isa = PBXBuildFile; fileRef = 99BFB6A31DCA872D00E2E997 /* LEVEL2_DEMO.PHD */; };
 		99BFB6A61DCA872D00E2E997 /* 05.ogg in Resources */ = {isa = PBXBuildFile; fileRef = 99BFB6A41DCA872D00E2E997 /* 05.ogg */; };
@@ -21,6 +22,7 @@
 /* Begin PBXFileReference section */
 		523F97E31DDF7AA5006FE2FC /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
 		523F97E51DDF926E006FE2FC /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		52E1EF1B1DE0A24F008428D4 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 		99BFB68D1DCA7F1700E2E997 /* lara.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = lara.h; path = ../../lara.h; sourceTree = "<group>"; };
 		99BFB68E1DCA7F1700E2E997 /* format.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = format.h; path = ../../format.h; sourceTree = "<group>"; };
 		99BFB68F1DCA7F1700E2E997 /* level.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = level.h; path = ../../level.h; sourceTree = "<group>"; };
@@ -59,6 +61,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				52E1EF1C1DE0A24F008428D4 /* IOKit.framework in Frameworks */,
 				523F97E61DDF926E006FE2FC /* QuartzCore.framework in Frameworks */,
 				523F97E41DDF7AA5006FE2FC /* Cocoa.framework in Frameworks */,
 				99DF7BC41DCBA30B00C40D0A /* AudioToolbox.framework in Frameworks */,
@@ -110,6 +113,7 @@
 		99C4C0821796A8230032DE85 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				52E1EF1B1DE0A24F008428D4 /* IOKit.framework */,
 				523F97E51DDF926E006FE2FC /* QuartzCore.framework */,
 				523F97E31DDF7AA5006FE2FC /* Cocoa.framework */,
 				99DF7BC31DCBA30B00C40D0A /* AudioToolbox.framework */,
