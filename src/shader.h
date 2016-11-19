@@ -18,6 +18,8 @@ struct Shader {
     Shader(const char *text, const char *defines = "") {
         #ifdef MOBILE
 	        #define GLSL_DEFINE "precision highp float;\n" "#define MOBILE\n"
+        #elif defined(GLSL_150)
+            #define GLSL_DEFINE "#version 150\n" "#define GLSL_150 1\n"
         #else
 	        #define GLSL_DEFINE "#version 120\n"
         #endif

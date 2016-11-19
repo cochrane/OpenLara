@@ -1,4 +1,16 @@
 R"====(
+#ifdef GLSL_150
+    #ifdef VERTEX
+        #define attribute in
+        #define varying out
+    #else
+        #define varying in
+#define texture2D texture
+#define gl_FragColor outColor
+out vec4 outColor;
+    #endif
+#endif
+
 varying vec4 vNormal;
 varying vec3 vLightVec[MAX_LIGHTS];
 varying vec3 vViewVec;

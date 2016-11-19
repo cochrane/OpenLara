@@ -12,20 +12,10 @@
     #include <GL/glx.h>
     #include <GL/glext.h>
 #elif __APPLE__
-    #include <Carbon/Carbon.h>
+    #define GLSL_150 1
     #include <AudioToolbox/AudioQueue.h>
     #include <OpenGL/OpenGL.h>
-    #include <OpenGL/gl.h>
-    #include <OpenGL/glext.h>
-    #include <AGL/agl.h>
-/*
- * In compatibility mode, Mac OS X only supports OpenGL 2 (no VAO), but it does 
- * support the Apple-specific VAO extension which is older and in all relevant 
- * parts 100% compatible. So use those functions instead.
- */
-#define glBindVertexArray glBindVertexArrayAPPLE
-#define glGenVertexArrays glGenVertexArraysAPPLE
-#define glDeleteVertexArrays glDeleteVertexArraysAPPLE
+    #include <OpenGL/gl3.h>
 #elif __EMSCRIPTEN__
     #define MOBILE 1
     #include <emscripten.h>
