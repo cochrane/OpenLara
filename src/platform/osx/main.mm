@@ -421,12 +421,17 @@ int getTime() {
 
 @implementation OpenLaraDelegate
 
-- (BOOL)application:(NSApplication *)sender openFile:(NSString *)filename {
+- (void)openLevel:(NSURL *)url {
     CVDisplayLinkStop(displayLink);
     Game::free();
-    Game::init(filename.fileSystemRepresentation, false);
-    [[NSDocumentController sharedDocumentController] noteNewRecentDocumentURL:[NSURL fileURLWithPath:filename isDirectory:NO]];
+    bool isHome = [url.lastPathComponent caseInsensitiveCompare:@"GYM.PHD"] == NSOrderedSame;
+    Game::init(url.fileSystemRepresentation, false, isHome);
+    [[NSDocumentController sharedDocumentController] noteNewRecentDocumentURL:url];
     CVDisplayLinkStart(displayLink);
+}
+
+- (BOOL)application:(NSApplication *)sender openFile:(NSString *)filename {
+    [self openLevel:[NSURL fileURLWithPath:filename isDirectory:NO]];
     return YES;
 }
 
@@ -459,11 +464,7 @@ int getTime() {
         if (result != NSFileHandlingPanelOKButton)
             return;
         
-        CVDisplayLinkStop(displayLink);
-        Game::free();
-        Game::init(panel.URL.fileSystemRepresentation, false);
-        [[NSDocumentController sharedDocumentController] noteNewRecentDocumentURL:panel.URL];
-        CVDisplayLinkStart(displayLink);
+        [self openLevel:panel.URL];
     }];
 }
 
