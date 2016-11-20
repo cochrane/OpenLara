@@ -89,6 +89,9 @@ double adjustedAxisValue(IOHIDValueRef value) {
     return copysign(adjustedOffset, centeredValue);
 }
 
+/*
+ * Processes a value from hidValueCallback that belongs to the GenericDesktop
+ * usage page, representing mostly joystick axis, hatswitch and so on.
 void setHatswitchValue(CFIndex value) {
     Input::setPos(ikJoyPOV, value);
 }
