@@ -3,6 +3,8 @@
 
 #include "utils.h"
 
+#include <vector>
+
 #define MAX_RESERVED_ENTITIES 64
 #define MAX_SECRETS_COUNT     16
 #define MAX_TRIGGER_COMMANDS  32
@@ -736,7 +738,6 @@ namespace TR {
             int roomNext, roomBelow, roomAbove;
             int floorIndex;
             int kill;
-            int trigCmdCount;
             Trigger trigger;
             FloorData::TriggerInfo trigInfo;
             FloorData::TriggerCommand trigCmd[MAX_TRIGGER_COMMANDS];
@@ -1009,7 +1010,6 @@ namespace TR {
             info.roomBelow    = s.roomBelow;
             info.roomAbove    = s.roomAbove;
             info.floorIndex   = s.floorIndex;
-            info.trigCmdCount = 0;
             info.kill         = 0;
             info.trigger      = Trigger::ACTIVATE;
 
@@ -1060,13 +1060,13 @@ namespace TR {
 
                     case FloorData::TRIGGER :  {
                         info.trigger        = (Trigger)cmd.sub;
-                        info.trigCmdCount   = 0;
+                        info.trigCmd.clear();
                         info.trigInfo       = (*fd++).triggerInfo;
                         FloorData::TriggerCommand trigCmd;
                         do {
                             ASSERT(info.trigCmdCount < MAX_TRIGGER_COMMANDS);
                             trigCmd = (*fd++).triggerCmd; // trigger action
-                            info.trigCmd[info.trigCmdCount++] = trigCmd;
+                            info.trigCmd.push_back(trigCmd);
                         } while (!trigCmd.end);                       
                         break;
                     }
