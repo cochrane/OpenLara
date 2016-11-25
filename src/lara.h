@@ -6,6 +6,7 @@
 #include "character.h"
 #include "trigger.h"
 #include "sprite.h"
+#include "inventory.h"
 
 #define TURN_FAST           PI
 #define TURN_FAST_BACK      PI * 3.0f / 4.0f
@@ -189,9 +190,13 @@ struct Lara : Character {
     } arms[2];
 
     ActionCommand actionList[MAX_TRIGGER_ACTIONS];
+    
+    Inventory inventory;
     int lastPickUp;
 
-    Lara(TR::Level *level, int entity, bool home) : Character(level, entity, 100), home(home), wpnCurrent(Weapon::EMPTY), wpnNext(Weapon::EMPTY), chestOffset(pos) {
+    Lara(TR::Level *level, int entity, bool home) : Character(level, entity, 1000), home(home), wpnCurrent(Weapon::EMPTY), wpnNext(Weapon::EMPTY), chestOffset(pos) {
+        animation.setAnim(ANIM_STAND);
+        getEntity().flags.active = 1;
         initMeshOverrides();
         for (int i = 0; i < 2; i++) {
             arms[i].shotTimer = MUZZLE_FLASH_TIME + 1.0f;
@@ -245,15 +250,36 @@ struct Lara : Character {
         angle = vec3(0.0f, PI, 0.0f);
         getEntity().room = 19;   
         
+    // level 2 (bat trigger)
+        pos = vec3(64108, -512, 16514);
+        angle = vec3(0.0f, -PI * 0.5f, 0.0f);
+        getEntity().room = 7;   
+        
+    // level 2 (bear)
+        pos = vec3(70082, -512, 26935);
+        angle = vec3(0.0f, PI * 0.5f, 0.0f);
+        getEntity().room = 15;   
+        
+    // level 2 (trap floor)
+        pos = vec3(31390, -2048, 33472);
+        angle = vec3(0.0f, 0.0f, 0.0f);
+        getEntity().room = 63;
+        
+    // level 2 (trap door)
+        pos = vec3(21987, -1024, 29144);
+        angle = vec3(0.0f, PI * 3.0f * 0.5f, 0.0f);
+        getEntity().room = 61;
+        
     // level 3a
         pos = vec3(41015, 3584, 34494);
         angle = vec3(0.0f, -PI, 0.0f);
         getEntity().room = 51;
-
+        
     // level 1
         pos = vec3(20215, 6656, 52942);
         angle = vec3(0.0f, PI, 0.0f);
         getEntity().room = 14;
+        
 */
         updateEntity();
     #endif
@@ -287,18 +313,17 @@ struct Lara : Character {
         arm.animation.updateInfo();
 
         wpnSetState(wState);
-
-        LOG("set anim\n");
     }
 
     int wpnGetDamage() {
         switch (wpnCurrent) {
-            case Weapon::PISTOLS : return 10;
-            case Weapon::SHOTGUN : return 15;
-            case Weapon::MAGNUMS : return 20;
-            case Weapon::UZIS    : return 5;
-            default : return 0;
+            case Weapon::PISTOLS : return 1;
+            case Weapon::SHOTGUN : return 1;
+            case Weapon::MAGNUMS : return 2;
+            case Weapon::UZIS    : return 1;
+            default : ;
         }
+        return 0;
     }
 
     void wpnSetState(Weapon::State wState) {
@@ -537,6 +562,13 @@ struct Lara : Character {
     }
 
     void updateWeapon() {
+        if (input & DEATH) {
+            arms[0].shotTimer = arms[1].shotTimer = MUZZLE_FLASH_TIME + 1.0f;
+            animation.overrideMask = 0;
+            target = -1;
+            return;
+        }
+
         updateTargets();
         updateOverrides();
 
@@ -802,18 +834,24 @@ struct Lara : Character {
         } else
             return false;
     }
-
+    
     virtual void cmdEmpty() {
         wpnHide();
     }
+
+    virtual void hit(int damage, Controller *enemy = NULL) {
+        health -= damage;
+        if (enemy && health > 0)
+            playSound(TR::SND_HIT, pos, Sound::PAN);
+    };
 
     bool waterOut() {
         // TODO: playSound 36
         vec3 dst = pos + getDir() * 32.0f;
 
         TR::Level::FloorInfo infoCur, infoDst;
-        level->getFloorInfo(getEntity().room,  (int)pos.x, (int)pos.z, infoCur),
-        level->getFloorInfo(infoCur.roomAbove, (int)dst.x, (int)dst.z, infoDst);
+        level->getFloorInfo(getEntity().room,  (int)pos.x, (int)pos.y, (int)pos.z, infoCur),
+        level->getFloorInfo(infoCur.roomAbove, (int)dst.x, (int)dst.y, (int)dst.z, infoDst);
 
         int h = int(pos.y - infoDst.floor);
 
@@ -860,12 +898,28 @@ struct Lara : Character {
         return fabsf(shortAngle(rotation, getEntity().rotation)) < PI * 0.25f;
     }
 
+    bool useItem(TR::Entity::Type item, TR::Entity::Type slot) {
+        if (item == TR::Entity::NONE) {
+            switch (slot) {
+                case TR::Entity::HOLE_KEY    : item = TR::Entity::KEY_1;    break;      // TODO: 1-4 
+                case TR::Entity::HOLE_PUZZLE : item = TR::Entity::PUZZLE_1; break; 
+                default : return false;
+            }
+        }
+
+        if (inventory.getCount(item) > 0) {
+            inventory.remove(item);
+            return true;
+        }
+        return false;
+    }
+
     void checkTrigger() {
         if (actionCommand) return;
 
         TR::Entity &e = getEntity();
         TR::Level::FloorInfo info;
-        level->getFloorInfo(e.room, e.x, e.z, info);
+        level->getFloorInfo(e.room, e.x, e.y, e.z, info);
 
         if (!info.trigCmdCount) return; // has no trigger
         bool isActive = level->entities[info.trigCmd[0].args].flags.active != 0;
@@ -881,17 +935,21 @@ struct Lara : Character {
                 break;
             case TR::Level::Trigger::SWITCH :
                 actionState = (isActive && stand == STAND_GROUND) ? STATE_SWITCH_UP : STATE_SWITCH_DOWN;
-                if ((input & ACTION) == 0 || state == actionState || !emptyHands())
+                if (!isPressed(ACTION) || state == actionState || !emptyHands())
                     return;
                 if (!checkAngle(level->entities[info.trigCmd[0].args].rotation))
                     return;
                 break;
             case TR::Level::Trigger::KEY :
                 actionState = STATE_USE_KEY;
-                if (isActive || (input & ACTION) == 0 || state == actionState || !emptyHands())   // TODO: STATE_USE_PUZZLE
+                if (isActive || !isPressed(ACTION) || state == actionState || !emptyHands())   // TODO: STATE_USE_PUZZLE
                     return;
                 if (!checkAngle(level->entities[info.trigCmd[0].args].rotation))
                     return;
+                if (animation.canSetState(actionState) && !useItem(TR::Entity::NONE, level->entities[info.trigCmd[0].args].type)) {
+                    playSound(TR::SND_NO, pos, Sound::PAN);
+                    return;
+                }
                 break;
             case TR::Level::Trigger::PICKUP :
                 if (!isActive)  // check if item is not picked up
@@ -925,15 +983,15 @@ struct Lara : Character {
                 return;
             }
 
-            if (info.trigger == TR::Level::Trigger::KEY && i == 0) continue; // skip keyhole
+            if (info.trigger == TR::Level::Trigger::KEY && i == 0) continue; // skip key שך puzzle hole
 
             TR::FloorData::TriggerCommand &cmd = info.trigCmd[i];
             switch (cmd.action) {
                 case TR::Action::CAMERA_SWITCH :
-                    *actionItem = ActionCommand(cmd.action, cmd.args, (float)info.trigCmd[++i].delay);    // camera switch uses next command for delay timer
+                    *actionItem = ActionCommand(entity, cmd.action, cmd.args, (float)info.trigCmd[++i].delay);    // camera switch uses next command for delay timer
                     break;
                 default :
-                    *actionItem = ActionCommand(cmd.action, cmd.args, info.trigInfo.timer);
+                    *actionItem = ActionCommand(entity, cmd.action, cmd.args, info.trigInfo.timer);
             }
 
             actionItem->next = (i < info.trigCmdCount - 1) ? actionItem + 1 : NULL;
@@ -981,7 +1039,7 @@ struct Lara : Character {
 
         TR::Entity &e = getEntity();
         TR::Level::FloorInfo info;
-        level->getFloorInfo(e.room, e.x, e.z, info, true);
+        level->getFloorInfo(e.room, e.x, e.y, e.z, info);
 
         if (stand == STAND_SLIDE || (stand == STAND_AIR && velocity.y > 0) || stand == STAND_GROUND) {
             if (e.y + 8 >= info.floor && (abs(info.slantX) > 2 || abs(info.slantZ) > 2)) {
@@ -999,7 +1057,7 @@ struct Lara : Character {
 
         int extra = stand != STAND_AIR ? 256 : 0;
 
-        if (e.y + extra >= info.floor) {
+        if (e.y + extra >= info.floor && !(stand == STAND_AIR && velocity.y < 0)) {
             if (stand != STAND_GROUND) {
                 pos.y = float(info.floor);
                 updateEntity();
@@ -1031,12 +1089,12 @@ struct Lara : Character {
             TR::Level::FloorInfo info;
             
             info.roomAbove = getRoomIndex();
-            level->getFloorInfo(info.roomAbove, (int)pos.x, (int)pos.z, info);
+            level->getFloorInfo(info.roomAbove, (int)pos.x, (int)pos.y, (int)pos.z, info);
             if (info.roomAbove == 0xFF)
                 info.roomAbove = getRoomIndex();
 
             do {
-                level->getFloorInfo(info.roomAbove, (int)p.x, (int)p.z, info, true);
+                level->getFloorInfo(info.roomAbove, (int)p.x, (int)p.y, (int)p.z, info);
             } while (info.ceiling > p.y - LARA_HANG_OFFSET && info.roomAbove != 0xFF);
 
             if (abs(int(info.floor - (p.y - LARA_HANG_OFFSET))) < 16) {
@@ -1099,7 +1157,7 @@ struct Lara : Character {
         if ((input & (FORTH | ACTION)) == (FORTH | ACTION) && (animation.index == ANIM_STAND || animation.index == ANIM_STAND_NORMAL) && emptyHands()) { // TODO: get rid of animation.index 
             vec3 p = pos + getDir() * 64.0f;
             TR::Level::FloorInfo info;
-            level->getFloorInfo(getRoomIndex(), (int)p.x, (int)p.z, info, true);
+            level->getFloorInfo(getRoomIndex(), (int)p.x, (int)p.y, (int)p.z, info);
             int h = (int)pos.y - info.floor;
             
             int aIndex = animation.index;
@@ -1187,7 +1245,7 @@ struct Lara : Character {
 
         if (state != STATE_SLIDE && state != STATE_SLIDE_BACK) {
             TR::Level::FloorInfo info;
-            level->getFloorInfo(e.room, e.x, e.z, info);
+            level->getFloorInfo(e.room, e.x, e.y, e.z, info);
 
             int sx = abs(info.slantX), sz = abs(info.slantZ);
             // get direction
@@ -1223,7 +1281,7 @@ struct Lara : Character {
             // possibility check
             TR::Level::FloorInfo info;
             vec3 p = pos + getDir() * 128.0f;
-            level->getFloorInfo(getRoomIndex(), (int)p.x, (int)p.z, info, true);
+            level->getFloorInfo(getRoomIndex(), (int)p.x, (int)p.y, (int)p.z, info);
             if (info.floor - info.ceiling >= 768)
                 return (input & WALK) ? STATE_HANDSTAND : STATE_HANG_UP;          
         }
@@ -1293,7 +1351,9 @@ struct Lara : Character {
     }
 
     virtual int getInput() {
-        input = 0;
+        input = Character::getInput();
+        if (input & DEATH) return input;
+
         int &p = Input::joy.POV;
         if (Input::down[ikW] || Input::down[ikUp]    || p == 8 || p == 1 || p == 2)     input |= FORTH;
         if (Input::down[ikD] || Input::down[ikRight] || p == 2 || p == 3 || p == 4)     input |= RIGHT;
@@ -1306,16 +1366,18 @@ struct Lara : Character {
         if (Input::down[ikShift] || Input::down[ikJoyLB])                               input |= WALK;
         if (Input::down[ikE] || Input::down[ikCtrl] || Input::down[ikJoyA])             input |= ACTION;
         if (Input::down[ikQ] || Input::down[ikAlt]  || Input::down[ikJoyY])             input |= WEAPON;
-        if (health <= 0)                                                                input  = DEATH;
         return input;
     }
 
     virtual void doCustomCommand(int curFrame, int prevFrame) {
         if (state == STATE_PICK_UP) {
-            if (!level->entities[lastPickUp].flags.invisible) {
+            TR::Entity &item = level->entities[lastPickUp];
+            if (!item.flags.invisible) {
                 int pickupFrame = stand == STAND_GROUND ? PICKUP_FRAME_GROUND : PICKUP_FRAME_UNDERWATER;                
-                if (curFrame >= pickupFrame)
-                    level->entities[lastPickUp].flags.invisible = true; // TODO: add to inventory
+                if (animation.isFrameActive(pickupFrame)) {
+                    item.flags.invisible = true;
+                    inventory.add(item.type, 1);
+                }
             }
         }
     }
@@ -1384,7 +1446,7 @@ struct Lara : Character {
 
         switch (stand) {
             case STAND_AIR :
-                velocity.y += GRAVITY * 30.0f * Core::deltaTime;
+                velocity.y += GRAVITY * Core::deltaTime;
                 break;
             case STAND_GROUND  :
             case STAND_SLIDE   :
@@ -1414,11 +1476,11 @@ struct Lara : Character {
                     TR::Level::FloorInfo info;
                     if (stand == STAND_HANG) {
                         vec3 p = pos + getDir() * 128.0f;
-                        level->getFloorInfo(e.room, (int)p.x, (int)p.z, info);
+                        level->getFloorInfo(e.room, (int)p.x, (int)p.y, (int)p.z, info);
                         if (info.roomAbove != 0xFF && info.floor >= e.y - LARA_HANG_OFFSET)
-                            level->getFloorInfo(info.roomAbove, (int)p.x, (int)p.z, info);
+                            level->getFloorInfo(info.roomAbove, (int)p.x, (int)p.y, (int)p.z, info);
                     } else
-                        level->getFloorInfo(e.room, e.x, e.z, info);
+                        level->getFloorInfo(e.room, e.x, e.y, e.z, info);
 
                     vec3 v(sinf(angleExt), 0.0f, cosf(angleExt));
                     velocity = info.getSlant(v) * speed;
@@ -1459,7 +1521,7 @@ struct Lara : Character {
 
         TR::Entity &e = getEntity();
         TR::Level::FloorInfo info;
-        level->getFloorInfo(e.room, (int)pos.x, (int)pos.z, info, true);
+        level->getFloorInfo(e.room, (int)pos.x, (int)pos.y, (int)pos.z, info);
 
     // get frame to get height
         TR::Animation *anim  = animation;
@@ -1533,7 +1595,7 @@ struct Lara : Character {
                     canPassGap = f >= 220.0f; // check dist to floor
                     if (canPassGap) { // check end of hang layer
                         vec3 d = pos + getDir() * 128.0f;
-                        level->getFloorInfo(info.roomAbove != 0xFF ? info.roomAbove : getRoomIndex(), (int)d.x, (int)d.z, info, true);
+                        level->getFloorInfo(info.roomAbove != 0xFF ? info.roomAbove : getRoomIndex(), (int)d.x, (int)d.y, (int)d.z, info);
                         canPassGap = fabsf((pos.y - LARA_HANG_OFFSET) - info.floor) < 64.0f;
                     }
                     break;
@@ -1611,6 +1673,7 @@ struct Lara : Character {
     }
 
     void renderMuzzleFlash(MeshBuilder *mesh, const mat4 &matrix, const vec3 &offset, float time) {
+        ASSERT(level->extra.muzzleFlash);
         if (time > MUZZLE_FLASH_TIME) return;
         float alpha = min(1.0f, (0.1f - time) * 20.0f);
         float lum   = 3.0f;
@@ -1619,7 +1682,7 @@ struct Lara : Character {
         m.rotateX(-PI * 0.5f);
         m.translate(offset);
         Core::active.shader->setParam(uColor, vec4(lum, lum, lum, alpha));
-        renderMesh(m, mesh, level->models[47].mStart);
+        renderMesh(m, mesh, level->extra.muzzleFlash->mStart);
     }
 
     virtual void render(Frustum *frustum, MeshBuilder *mesh) {

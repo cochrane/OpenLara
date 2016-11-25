@@ -409,6 +409,8 @@ namespace TR {
 
             SPARK                    = 164,      // sprite
 
+            MUZZLE_FLASH             = 166,
+
             VIEW_TARGET              = 169,
    
             GLYPH                    = 190,      // sprite
@@ -418,7 +420,7 @@ namespace TR {
         angle   rotation;
         int16   intensity;
         union {
-            struct { uint16 unused:7, clear:1, invisible:1, active:5, unused2:1, rendered:1; };
+            struct { uint16 unused:7, clear:1, invisible:1, active:5, collision:1, rendered:1; };
             uint16 value;
         } flags;
     // not exists in file
@@ -617,10 +619,13 @@ namespace TR {
     };
 
     struct SoundInfo {
-       uint16 offset;
-       uint16 volume;
-       uint16 chance;   // If !=0 and ((rand()&0x7fff) > Chance), this sound is not played
-       uint16 flags;    // Bits 0-1: Looped flag, bits 2-5: num samples, bits 6-7: UNUSED
+        uint16 offset;
+        uint16 volume;
+        uint16 chance;   // If !=0 and ((rand()&0x7fff) > Chance), this sound is not played
+        union {
+            struct { uint16 replay:2, count:6, unknown:5, pitch:1, gain:1; };
+            uint16 value;
+        } flags;
     };
 
     #pragma pack(pop)
@@ -731,9 +736,10 @@ namespace TR {
         };
     
         struct FloorInfo {
+            int roomFloor, roomCeiling;
+            int roomNext, roomBelow, roomAbove;
             int floor, ceiling;
             int slantX, slantZ;
-            int roomNext, roomBelow, roomAbove;
             int floorIndex;
             int kill;
             int trigCmdCount;
@@ -757,6 +763,10 @@ namespace TR {
 
         bool    secrets[MAX_SECRETS_COUNT];
         void    *cameraController;
+
+        struct {
+            Model *muzzleFlash;
+        } extra;
 
         Level(const char *name, bool demo) {
             Stream stream(name);
@@ -883,8 +893,15 @@ namespace TR {
                 c.g <<= 2;
                 c.b <<= 2;
             }
-
+        // init secrets states
             memset(secrets, 0, MAX_SECRETS_COUNT * sizeof(secrets[0]));
+        // get special models indices
+            memset(&extra, 0, sizeof(extra));
+            for (int i = 0; i < modelsCount; i++)
+                switch (models[i].type) {
+                    case Entity::MUZZLE_FLASH : extra.muzzleFlash = &models[i]; break;
+                    default : ;
+                }
         }
 
         ~Level() {
@@ -997,15 +1014,17 @@ namespace TR {
             return room.sectors[sx * room.zSectors + sz];
         }
 
-        void getFloorInfo(int roomIndex, int x, int z, FloorInfo &info, bool actual = false, int prevRoom = 0xFF) const {
+        void getFloorInfo(int roomIndex, int x, int y, int z, FloorInfo &info) const {
             int dx, dz;
             Room::Sector &s = getSector(roomIndex, x, z, dx, dz);
 
-            info.floor        = 256 * (int)s.floor;
-            info.ceiling      = 256 * (int)s.ceiling;
+            info.roomFloor    = 256 * s.floor;
+            info.roomCeiling  = 256 * s.ceiling;
+            info.floor        = info.roomFloor;
+            info.ceiling      = info.roomCeiling;
             info.slantX       = 0;
             info.slantZ       = 0;
-            info.roomNext     = 255;
+            info.roomNext     = 0xFF;
             info.roomBelow    = s.roomBelow;
             info.roomAbove    = s.roomAbove;
             info.floorIndex   = s.floorIndex;
@@ -1013,23 +1032,60 @@ namespace TR {
             info.kill         = 0;
             info.trigger      = Trigger::ACTIVATE;
 
-            if (actual) {
-                if (info.roomBelow != 0xFF && info.roomBelow != prevRoom) {
-                    FloorInfo tmp;
-                    getFloorInfo(info.roomBelow, x, z, tmp, true, roomIndex);
-                    info.floor = tmp.floor;
-                }
+            Room::Sector *sBelow = &s;
+            while (sBelow->roomBelow != 0xFF) sBelow = &getSector(sBelow->roomBelow, x, z, dx, dz);
+            info.floor = 256 * sBelow->floor;
+            parseFloorData(info, sBelow->floorIndex, dx, dz);
 
-                if (info.roomAbove != 0xFF && info.roomAbove != prevRoom) {
-                    FloorInfo tmp;
-                    getFloorInfo(info.roomAbove, x, z, tmp, true, roomIndex);
-                    info.ceiling = tmp.ceiling;
+            if (info.roomNext == 0xFF) {
+                Room::Sector *sAbove = &s;
+                while (sAbove->roomAbove != 0xFF) sAbove = &getSector(sAbove->roomAbove, x, z, dx, dz);
+                if (sAbove != sBelow) {
+                    info.ceiling = 256 * sAbove->ceiling;
+                    parseFloorData(info, sAbove->floorIndex, dx, dz);
                 }
+            } else {
+                int tmp = info.roomNext;
+                getFloorInfo(tmp, x, y, z, info);
+                info.roomNext = tmp;
             }
 
-            if (!s.floorIndex) return;
+        // entities collide
+            if (info.trigCmdCount) {
+                int sx = x / 1024;
+                int sz = z / 1024;
 
-            FloorData *fd = &floors[s.floorIndex];
+                for (int i = 0; i < info.trigCmdCount; i++) {                    
+                    FloorData::TriggerCommand cmd = info.trigCmd[i];
+                    if (cmd.action != Action::ACTIVATE) continue;
+                    
+                    Entity &e = entities[cmd.args];
+                    if (!e.flags.collision) continue;
+
+                    if (sx != e.x / 1024 || sz != e.z / 1024) continue;
+
+                    switch (e.type) {
+                        case Entity::DOOR_FLOOR_1 :
+                        case Entity::DOOR_FLOOR_2 :
+                        case Entity::TRAP_FLOOR   : {
+                            int ey = e.y - (e.type == Entity::TRAP_FLOOR ? 512 : 0);
+                            if (ey >= y - 128 && ey < info.floor)
+                                info.floor = ey;
+                            if (ey  < y - 128 && ey > info.ceiling)
+                                info.ceiling = ey + (e.type == Entity::TRAP_FLOOR ? 256 : 0);
+                            break;
+                        }
+
+                        default : ;
+                    }
+                }
+            }
+        }
+
+        void parseFloorData(FloorInfo &info, int floorIndex, int dx, int dz) const {
+            if (!floorIndex) return;
+
+            FloorData *fd = &floors[floorIndex];
             FloorData::Command cmd;
 
             do {
@@ -1067,7 +1123,7 @@ namespace TR {
                             ASSERT(info.trigCmdCount < MAX_TRIGGER_COMMANDS);
                             trigCmd = (*fd++).triggerCmd; // trigger action
                             info.trigCmd[info.trigCmdCount++] = trigCmd;
-                        } while (!trigCmd.end);                       
+                        } while (!trigCmd.end);
                         break;
                     }
 
@@ -1080,9 +1136,8 @@ namespace TR {
 
             } while (!cmd.end);
 
-            if (actual && info.roomNext != 0xFF)
-                getFloorInfo(info.roomNext, x, z, info, actual, prevRoom);
         }
+
 
     }; // struct Level
 
